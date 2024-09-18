@@ -1,0 +1,36 @@
+# Define input files
+import os
+import glob
+
+data_path = "tmp"
+
+bam_files_list = glob.glob(os.path.join(data_path, '*', '*gex*bam*'))
+print(bam_files_list)
+# Define output directories and files
+filtered_bam_dir = data_path + "filtered_bam/"
+
+# Create a dicitionary of sample names and paths to bam files
+sample_paths = dict(zip([sample_file.split('/')[-2] for sample_file in bam_files_list], bam_files_list))
+
+print(sample_paths)
+
+# Use these tuples in the expand function
+rule all:
+    input:
+        expand(filtered_bam_dir + "{sample}_tag.bam", sample=sample_paths.keys()),
+
+
+# Rule to filter BAM file by tag
+rule filter_bam_by_tag:
+    input:
+        bam=lambda wildcards: sample_paths[wildcards.sample],
+    output:
+        filtered_bam=filtered_bam_dir + "{sample}_tag.bam"
+    threads: 30
+    resources:
+        mem=5000,
+        time="02:00:00"
+    params:
+        tag="xf"
+    shell:
+        "subset-bam --bam {input.bam} --bam-tag {params.tag} --cell-barcodes 25 --out-bam {output.filtered_bam} --cores {threads}"
