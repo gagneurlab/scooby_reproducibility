@@ -9,12 +9,11 @@ import torch
 import tqdm
 from accelerate import Accelerator
 from polya_project.data import GenomeIntervalDataset, str_to_one_hot
-from peft import LoraConfig, get_peft_model
 from torch.utils.data import DataLoader
 
 from utils.utils import fix_rev_comp_multiome, get_gene_slice_and_strand, get_cell_count_pred
-from modeling.scborzoi import ScBorzoi
-from data.scdata import onTheFlyExonMultiomePseudobulkDataset
+from scooby.modeling import Scooby
+from scooby.data import onTheFlyExonMultiomePseudobulkDataset
 
 def get_pred_for_snp(row):
     try:
@@ -103,23 +102,7 @@ if __name__ == '__main__' :
     accelerator = Accelerator(step_scheduler_with_optimizer=False)
 
     data_path = 'tmp'
-    csb = ScBorzoi(
-        cell_emb_dim=14, 
-        n_tracks=3,
-        embedding_dim=1920, 
-        return_center_bins_only=True, 
-        disable_cache=True,
-        use_transform_borzoi_emb=True
-    )
-    old_weights = torch.load('/s/project/QNA/borzoi/f0/model0_best.h5.pt')
-    csb.load_state_dict(old_weights, strict = False)
-    
-    config = LoraConfig(
-        target_modules=r"(?!separable\d+).*conv_layer|.*to_q|.*to_v|transformer\.\d+\.1\.fn\.1|transformer\.\d+\.1\.fn\.4",
-    )
-    csb = get_peft_model(csb, config)
-    csb.load_state_dict(torch.load(os.path.join(data_path, 'borzoi_saved_models/csb_epoch_20_scDog-neurips-PMseq-4nodrop-softclip5-64cell-normalizeATAC-fixedemb-noneighbors-rightembeddingrightsplit-longer/pytorch_model.bin'))) 
-    csb = csb.merge_and_unload()
+    csb = Scooby.from_pretrained('johahi/neurips-scooby', cell_emb_dim = 14, n_tracks = 3, use_transform_borzoi_emb = True)
     csb = accelerator.prepare(csb)
     csb.eval()
     gtf_file = os.path.join(data_path, "gencode.v32.annotation.sorted.gtf.gz")
