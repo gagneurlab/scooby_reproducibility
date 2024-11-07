@@ -1,47 +1,25 @@
-import numpy as np
-import pandas as pd
-import polars as pl
-import scipy
-import scanpy as sc
 import os
 
+import numpy as np
+import pandas as pd
+import scipy
 import torch
 import tqdm
 from accelerate import Accelerator
-from peft import LoraConfig, get_peft_model
+import polars as pl
+import scanpy as sc
+
 from torch.utils.data import DataLoader
 
-from utils.utils import fix_rev_comp_multiome, undo_squashed_scale
-from modeling.scborzoi import ScBorzoi
-from data.scdata import onTheFlyMultiomeDataset
-from polya_project.data import GenomeIntervalDataset
+from enformer_pytorch.data import GenomeIntervalDataset
+
+from scooby.modeling import Scooby
+from scooby.data import onTheFlyMultiomeDataset
+from scooby.utils.utils import fix_rev_comp_multiome, undo_squashed_scale, get_gene_slice_and_strand
+from scooby.utils.transcriptome import Transcriptome
 
 from tangermeme.io import read_meme
-from tangermeme.tools.fimo import FIMO
-from tangermeme.ersatz import randomize, substitute
 from tangermeme.utils import characters
-
-def compute_gene_expression(
-    gene_slice,
-    strand,
-    csb, 
-    seqs, 
-    seqs_rev_comp, 
-    conv_weight, 
-    conv_bias 
-):
-    outputs = predict(csb, seqs, seqs_rev_comp, conv_weight, conv_bias, bins_to_predict= gene_slice)
-    # get RNA:
-    outputs_rna = outputs[:,:,torch.tensor([1,1,0]).repeat(outputs.shape[2]//3).bool()]
-    outputs_rna = outputs_rna.float().detach()
-    
-    # sum exons on positive/negative strand for all cells
-    num_pos = outputs.shape[-1]
-    if strand == '+':
-        unsquashed = undo_squashed_scale(outputs_rna[0, : ,:num_pos:2], clip_soft=5)
-    elif strand == '-':
-        unsquashed = undo_squashed_scale(outputs_rna[0, : ,1:num_pos:2], clip_soft=5)
-    return unsquashed.sum(axis=0).detach().clone().cpu()
 
 def compute_rna_atac(
     gene_slice,
@@ -69,20 +47,6 @@ def compute_rna_atac(
     outputs_atac = outputs_atac.float().detach() * 20
     return unsquashed.sum(axis=0).detach().clone().cpu(), outputs_atac[0].sum(axis=0).detach().clone().cpu()
 
-
-def compute_accessibility(
-    csb, 
-    seqs, 
-    seqs_rev_comp, 
-    conv_weight, 
-    conv_bias 
-):
-    outputs = predict(csb, seqs, seqs_rev_comp, conv_weight, conv_bias)
-    # get ATAC:
-    outputs_atac = outputs[:,:,torch.tensor([0,0,1]).repeat(outputs.shape[2]//3).bool()]
-    outputs_atac = outputs_atac.float().detach() * 20
-    return outputs_atac[0].sum(axis=0).detach().clone().cpu()
-
 def predict(model, seqs, seqs_rev_comp, conv_weights, conv_biases, bins_to_predict = None):
     bs = seqs.shape[0]
     assert bs == 1
@@ -99,51 +63,31 @@ def predict(model, seqs, seqs_rev_comp, conv_weights, conv_biases, bins_to_predi
 
 
 if __name__ == '__main__' :
-    import argparse
 
-    # Instantiate the parser
-    parser = argparse.ArgumentParser(description='no')
-    # Required positional argument
-    parser.add_argument('chrom', type=int,
-                        help='A required integer positional argument')
-    args = parser.parse_args()
-    motif_to_do = pd.read_csv("MotifTable.csv", header = None).iloc[args.chrom].item()
+    data_path = '/data/ceph/hdd/project/node_08/QNA/scborzoi/submission_data'
     accelerator = Accelerator(step_scheduler_with_optimizer=False)
-    n_sub = 10
-    subset = 10
-    
-    data_path = 'tmp'
-    csb = ScBorzoi(
-        cell_emb_dim=14, 
-        n_tracks=3,
-        embedding_dim=1920, 
-        return_center_bins_only=True, 
-        disable_cache=True,
-        use_transform_borzoi_emb=True
-    )
-    old_weights = torch.load('/s/project/QNA/borzoi/f0/model0_best.h5.pt')
-    csb.load_state_dict(old_weights, strict = False)
-    
-    config = LoraConfig(
-        target_modules=r"(?!separable\d+).*conv_layer|.*to_q|.*to_v|transformer\.\d+\.1\.fn\.1|transformer\.\d+\.1\.fn\.4",
-    )
-    csb = get_peft_model(csb, config)
-    csb.load_state_dict(torch.load(os.path.join(data_path, 'borzoi_saved_models/csb_epoch_20_scDog-neurips-PMseq-4nodrop-softclip5-64cell-normalizeATAC-fixedemb-noneighbors-rightembeddingrightsplit-longer/pytorch_model.bin'))) 
-    csb = csb.merge_and_unload()
+    csb = Scooby.from_pretrained(
+    'johahi/neurips-scooby',
+    cell_emb_dim=14,
+    embedding_dim=1920,
+    n_tracks=3,
+    return_center_bins_only=True,
+    disable_cache=False,
+    use_transform_borzoi_emb=True,
+)
     csb = accelerator.prepare(csb)
     csb.eval()
+    
     gtf_file = os.path.join(data_path, "gencode.v32.annotation.sorted.gtf.gz")
-    fasta_file = os.path.join(data_path, 'genome_human.fa')
-    bed_file = os.path.join(data_path, 'sequences.bed')
-    import pickle
-    with open(os.path.join(data_path, 'gencode.v32.annotation.gtf.transcriptome'), 'rb') as handle:
-        transcriptome = pickle.load(handle)
-    base_path = os.path.join(data_path, 'snapatac', 'pseudobulks/')
-    sample = 'merged'
-    neighbors_100 = scipy.sparse.load_npz(os.path.join(data_path, 'borzoi_training_data_fixed', 'neighbors_100_no_val_genes_new.npz'))
-    embedding = pd.read_parquet(os.path.join(data_path, 'borzoi_training_data_fixed',  'embedding_no_val_genes_new.pq'))
-    neighbors = scipy.sparse.csr_matrix(neighbors_100.shape)
-    cell_type_index = pd.read_parquet(os.path.join(data_path,  'borzoi_training_data_fixed/celltype_fixed.pq'))
+    fasta_file = os.path.join(data_path, "scooby_training_data", "genome_human.fa")
+    bed_file = os.path.join(data_path, "scooby_training_data", "sequences.bed")
+    transcriptome = Transcriptome(gtf_file)
+    base_path = os.path.join(data_path, 'scooby_training_data', 'pseudobulks')
+
+    neighbors = scipy.sparse.load_npz(os.path.join(data_path, 'scooby_training_data', 'no_neighbors.npz'))
+    embedding = pd.read_parquet(os.path.join(data_path, 'scooby_training_data',  'embedding_no_val_genes_new.pq'))
+    cell_type_index = pd.read_parquet(os.path.join(data_path,  'scooby_training_data', 'celltype_fixed.pq'))
+    
     cell_type_index['size'] = cell_type_index['cellindex'].apply(lambda x: len(x))
     cell_type_index['celltype_name'] = cell_type_index['celltype'].copy()
     cell_type_index['celltype'] = cell_type_index['celltype'].str.replace(' ', '_').replace(r"G/M_prog", "G+M_prog").replace("MK/E_prog", "MK+E_prog")
@@ -161,7 +105,7 @@ if __name__ == '__main__' :
             ).cuda()
     filter_val = lambda df: df.filter(pl.col('column_2') >=0)
     val_ds = GenomeIntervalDataset(
-        bed_file = os.path.join(data_path, 'borzoi_training_data_fixed/DEG_gene_sequences.csv'),
+        bed_file = os.path.join(data_path, 'motif_effects', 'DEG_gene_sequences.csv'),
         fasta_file = fasta_file,
         filter_df_fn = filter_val,
         return_seq_indices = False,
@@ -201,6 +145,7 @@ if __name__ == '__main__' :
             cell_emb_idx = cell_emb_idx.cuda()
             conv_weights, conv_biases = csb.forward_cell_embs_only(cell_emb_idx)
             cell_emb_conv_weights_and_biases.append((conv_weights, conv_biases))
+   
     
     counts_ref_rna, counts_alt_rna = [], []
     counts_ref_atac, counts_alt_atac = [], []
@@ -256,4 +201,4 @@ if __name__ == '__main__' :
     ad_alt = sc.AnnData(counts_alt_rna, obs=obs, var=var)
     ad_alt.layers['atac'] = counts_alt_atac
     ad_alt_gata = ad_alt[adata.obs_names].copy()
-    ad_alt_gata.write(os.path.join(data_path, 'motif_deletion/ref_multiome_fixed.h5ad'))
+    ad_alt_gata.write(os.path.join(data_path, 'motif_effects/ref_multiome_fixed_test.h5ad'))

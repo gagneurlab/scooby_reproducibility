@@ -2,6 +2,6 @@
 chunk=$1
 
 source ~/.bashrc
-conda activate borzoi-pytorch
+conda activate scooby_reproducibility
 
-python -u parallel_inference-rnaonly.py $chunk
+python -u parallel_inference.py $chunk
