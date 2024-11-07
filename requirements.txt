@@ -1,0 +1,13 @@
+git+https://github.com/gagneurlab/scooby.git
+git+https://github.com/lauradmartens/scvi-tools.git@poissonmultivi
+pyranges
+anndata==0.10.8
+trackplot
+pygam
+gseapy
+fastcluster
+tangermeme
+biopython
+pychromvar
+adjusttext==1.2.0
+genomepy
