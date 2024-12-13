@@ -210,14 +210,14 @@ if __name__ == '__main__' :
                     gene_slice,
                     strand,
                     csb, 
-                    seqs, 
-                    seqs_rev_comp, 
+                    seqs_alt, 
+                    seqs_alt_rev_comp, 
                     conv_weight, 
                     conv_bias 
                 )
                 counts_substition_rna.append(rna)
                 counts_substition_atac.append(atac)
-                break
+        
             stacked_counts_alt_rna.append(torch.stack(counts_substition_rna).mean(axis=0)) # RNA counts
             stacked_counts_alt_atac.append(torch.stack(counts_substition_atac).mean(axis=0)) # ATAC counts
         
