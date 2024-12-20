@@ -55,7 +55,7 @@ def find_and_replace_motif(seqs_ref, motif, substitution):    # compute motif hi
     seqs_alt = seqs_ref.clone()
     if len(hits) > 0:
         for _, motif_range in hits.iterrows():
-            seqs_alt = substitute(seqs_alt, substitution, start=motif_range.start, allow_N=True)
+            seqs_alt = substitute(seqs_alt, substitution, start=motif_range.start)
             
     seqs_alt_rev_comp =  torch.flip(seqs_alt.permute(0,2,1), (-1, -2)).permute(0,2,1)
     return seqs_alt, seqs_alt_rev_comp 
@@ -192,7 +192,7 @@ if __name__ == '__main__' :
     
     # iterate over all val gene sequences
     for i,x in tqdm.tqdm(enumerate(val_loader), disable = False, total=len(val_dataset)):  
-        gene_slice, strand = get_gene_slice_and_strand(transcriptome, val_dataset.genome_ds.df[i, 'column_4'], val_dataset.genome_ds.df[i, 'column_2'], span = False)
+        gene_slice, strand = get_gene_slice_and_strand(transcriptome, val_dataset.genome_ds.df[i, 'column_4'], val_dataset.genome_ds.df[i, 'column_2'], span = True)
         
         seqs = x[0].cuda().permute(0,2,1)
         seqs_rev_comp =  torch.flip(seqs.permute(0,2,1), (-1, -2)).permute(0,2,1)
