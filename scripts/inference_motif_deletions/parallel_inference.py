@@ -98,6 +98,7 @@ if __name__ == '__main__' :
     return_center_bins_only=True,
     disable_cache=False,
     use_transform_borzoi_emb=True,
+    cachesize=(2+n_sub*2) #IMPORTANT!
 )
     csb = accelerator.prepare(csb)
     csb.eval()
