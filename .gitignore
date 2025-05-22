@@ -36,3 +36,4 @@ tmp/
 *.out
 *checkpoint*
 wandb/
+figures/
