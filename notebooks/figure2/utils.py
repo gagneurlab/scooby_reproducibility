@@ -85,6 +85,6 @@ def plot_cells_pseudotime(
     if plot_cells:
         sns.scatterplot(data=adata.obs.loc[meta_lineage_cells[lineage]], x='dpt_pseudotime',
                                 y=-0.01, hue='l2_cell_type',
-                                legend=None, alpha=0.5, ax = ax, palette=list(adata.uns['l2_cell_type_colors']))
+                                legend=None, alpha=0.5, ax = ax, palette=list(adata.uns['l2_cell_type_colors']), rasterized=True)
 
     return ax, sns_df
