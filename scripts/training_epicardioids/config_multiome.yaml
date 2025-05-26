@@ -1,0 +1,31 @@
+output_dir: "tmp"
+run_name: "hooby_run"
+
+data:
+  rna_plus_path: "/data/ceph/hdd/project/node_08/QNA/scborzoi/submission_data/epicardioids_training_data/snapatac_matched_plus.h5ad'"
+  rna_minus_path: "/data/ceph/hdd/project/node_08/QNA/scborzoi/submission_data/epicardioids_training_data/snapatac_matched_minus.h5ad'"
+  atac_path: "/data/ceph/hdd/project/node_08/QNA/scborzoi/submission_data/epicardioids_training_data/snapatac_matched_atac.h5ad'"
+  embedding_path: "/data/ceph/hdd/project/node_08/QNA/scborzoi/submission_data/epicardioids_training_data/embedding.pq"
+  neighbors_path: "/data/ceph/hdd/project/node_08/QNA/scborzoi/submission_data/epicardioids_training_data/no_neighbors.npz"
+  sequences_path: "/s/project/QNA/scborzoi/submission_data/scooby_training_data/sequences.bed"
+  genome_path: "/s/project/QNA/scborzoi/submission_data/scooby_training_data/genome_human.fa"
+  test_fold: 3
+  val_fold: 4
+  context_length: 524288
+  shift_augs: [-3, 3]
+  rc_aug: True
+
+model:
+  cell_emb_dim: 50
+  num_tracks: 3
+  pretrained_model: "johahi/borzoi-replicate-0"
+
+training:
+  batch_size: 1
+  lr: 1e-4
+  wd: 1e-6
+  clip_global_norm: 1.0
+  warmup_steps: 1000
+  num_epochs: 40
+  eval_every_n: 256
+  total_weight: 0.2
